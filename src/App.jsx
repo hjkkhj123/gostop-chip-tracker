@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const STORAGE_KEY = 'gostop-chip-tracker-v1';
 const DEFAULT_PLAYERS = ['플레이어 1', '플레이어 2', '플레이어 3'];
