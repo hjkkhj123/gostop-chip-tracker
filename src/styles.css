@@ -77,6 +77,13 @@ select {
   align-items: center;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .grid-two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -136,13 +143,32 @@ p {
   margin-top: 12px;
 }
 
-.transfer-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr)) 120px;
-  align-items: end;
+.start-button {
+  width: 100%;
+  margin-top: 16px;
 }
 
-.transfer-form .grow {
-  grid-column: span 1;
+.status-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-strip div {
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
+  background: #f8fafc;
+}
+
+.status-strip strong {
+  display: block;
+  font-size: 28px;
+}
+
+.transfer-form {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) 120px;
+  align-items: end;
 }
 
 .history-row {
@@ -150,6 +176,12 @@ p {
   align-items: center;
   border-bottom: 1px solid #f3f4f6;
   padding-bottom: 12px;
+}
+
+.ranking-row strong,
+.player-row strong {
+  min-width: 48px;
+  text-align: right;
 }
 
 .history-row strong {
@@ -179,8 +211,13 @@ p {
   .player-row,
   .ranking-row,
   .history-row,
-  .inline-form {
+  .inline-form,
+  .status-strip {
     grid-template-columns: 1fr;
+  }
+
+  .header-actions {
+    justify-content: stretch;
   }
 
   .history-actions {
