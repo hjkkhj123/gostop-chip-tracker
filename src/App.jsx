@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+function generateId() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+}
+
 const STORAGE_KEY = 'gostop-chip-tracker-v1';
 const DEFAULT_PLAYERS = ['플레이어 1', '플레이어 2', '플레이어 3', '플레이어 4'];
 const DEFAULT_CHIPS = 100;
-const EMPTY_TRANSFER_FORM = {
-  from: '',
-  to: '',
-  amount: '',
-};
 
 function createInitialState() {
   return {
-    players: DEFAULT_PLAYERS.map((name, index) => ({ id: String(index + 1), name })),
+    players: DEFAULT_PLAYERS.map((name, index) => ({ id: String(index + 1), name: '' })),
     initialChips: DEFAULT_CHIPS,
     transfers: [],
     isStarted: false,
@@ -76,7 +76,7 @@ function normalizeTransfers(transfers, playerIds) {
       }
 
       return {
-        id: typeof transfer?.id === 'string' && transfer.id ? transfer.id : crypto.randomUUID(),
+        id: typeof transfer?.id === 'string' && transfer.id ? transfer.id : generateId(),
         from,
         to,
         amount,
@@ -87,22 +87,6 @@ function normalizeTransfers(transfers, playerIds) {
     .sort((a, b) => b.createdAt - a.createdAt);
 }
 
-function getNextTransferForm(players, currentForm = EMPTY_TRANSFER_FORM) {
-  const [first, second = first] = players;
-  const ids = new Set(players.map((player) => player.id));
-  const from = ids.has(currentForm.from) ? currentForm.from : first?.id ?? '';
-  let to = ids.has(currentForm.to) ? currentForm.to : second?.id ?? first?.id ?? '';
-
-  if (from && from === to) {
-    to = players.find((player) => player.id !== from)?.id ?? '';
-  }
-
-  return {
-    from,
-    to,
-    amount: currentForm.amount ?? '',
-  };
-}
 
 function loadInitialState() {
   try {
@@ -131,7 +115,8 @@ function loadInitialState() {
 export default function App() {
   const [state, setState] = useState(loadInitialState);
   const [initialChipsInput, setInitialChipsInput] = useState(() => String(loadInitialState().initialChips));
-  const [transferForm, setTransferForm] = useState(() => getNextTransferForm(loadInitialState().players));
+  const [selection, setSelection] = useState({ from: null, to: null });
+  const [amountInput, setAmountInput] = useState('');
 
   useEffect(() => {
     try {
@@ -140,10 +125,6 @@ export default function App() {
       // ignore storage failures and keep the UI usable
     }
   }, [state]);
-
-  useEffect(() => {
-    setTransferForm((prev) => getNextTransferForm(state.players, prev));
-  }, [state.players]);
 
   useEffect(() => {
     setInitialChipsInput(String(state.initialChips));
@@ -166,8 +147,9 @@ export default function App() {
     : state.initialChips;
   const totalChips = state.players.length * (state.isStarted ? state.initialChips : setupInitialChips);
 
-  const ranking = useMemo(() => {
-    return [...state.players].sort((a, b) => balances[b.id] - balances[a.id]);
+  const ranks = useMemo(() => {
+    const sorted = [...state.players].sort((a, b) => balances[b.id] - balances[a.id]);
+    return Object.fromEntries(sorted.map((player, index) => [player.id, index + 1]));
   }, [state.players, balances]);
 
   function updatePlayerName(id, name) {
@@ -208,22 +190,30 @@ export default function App() {
 
   }
 
-  function addTransfer(event) {
-    event.preventDefault();
-    const amount = Number(transferForm.amount);
-    const senderBalance = balances[transferForm.from] ?? 0;
+  function handleCardTap(playerId) {
+    if (!selection.from) {
+      setSelection({ from: playerId, to: null });
+      setAmountInput('');
+    } else if (selection.from === playerId) {
+      setSelection({ from: null, to: null });
+      setAmountInput('');
+    } else {
+      setSelection((prev) => ({ ...prev, to: playerId }));
+    }
+  }
 
-    if (!transferForm.from || !transferForm.to || transferForm.from === transferForm.to) return;
+  function submitTransfer() {
+    const amount = Number(amountInput);
+    if (!selection.from || !selection.to) return;
     if (!Number.isInteger(amount) || amount <= 0) return;
-    if (amount > senderBalance) return;
 
     setState((prev) => ({
       ...prev,
       transfers: [
         {
-          id: crypto.randomUUID(),
-          from: transferForm.from,
-          to: transferForm.to,
+          id: generateId(),
+          from: selection.from,
+          to: selection.to,
           amount,
           createdAt: Date.now(),
         },
@@ -231,7 +221,8 @@ export default function App() {
       ],
     }));
 
-    setTransferForm((prev) => ({ ...prev, amount: '' }));
+    setSelection({ from: null, to: null });
+    setAmountInput('');
   }
 
   function startGame() {
@@ -266,30 +257,24 @@ export default function App() {
     const nextState = createInitialState();
     setState(nextState);
     setInitialChipsInput(String(nextState.initialChips));
-    setTransferForm(getNextTransferForm(nextState.players));
+    setSelection({ from: null, to: null });
+    setAmountInput('');
   }
 
   return (
     <div className="app">
-      <header className="header card">
-        <div>
-          <p className="eyebrow">고스톱 칩 트래커</p>
-          <h1>{state.isStarted ? '진행 중인 칩 현황' : '게임 시작 전 설정'}</h1>
-        </div>
-        <div className="header-actions">
-          {state.isStarted && (
-            <button className="ghost" onClick={returnToSetup}>설정으로</button>
-          )}
-          <button className="ghost" onClick={resetGame}>초기화</button>
-        </div>
-      </header>
-
       {!state.isStarted ? (
-        <section className="card grid-two">
-          <div>
-            <h2>게임 설정</h2>
-            <label className="field">
-              <span>시작 칩</span>
+        <div className="setup">
+          <header className="setup-header card">
+            <div>
+              <p className="eyebrow">고스톱 칩 트래커</p>
+              <h1>게임 설정</h1>
+            </div>
+            <button className="ghost small" onClick={resetGame}>초기화</button>
+          </header>
+          <section className="card setup-chips">
+            <h2>시작 칩</h2>
+            <div className="setup-chips-row">
               <input
                 type="number"
                 min="1"
@@ -297,17 +282,18 @@ export default function App() {
                 onChange={(e) => setInitialChipsInput(e.target.value)}
                 onBlur={commitInitialChipsInput}
               />
-            </label>
-            <p className="caption">전체 칩 합계: {totalChips}</p>
-          </div>
+              <span className="caption">× {state.players.length}명 = 총 {totalChips}칩</span>
+            </div>
+          </section>
 
-          <div>
+          <section className="card">
             <h2>플레이어</h2>
             <div className="player-list">
-              {state.players.map((player) => (
+              {state.players.map((player, index) => (
                 <div key={player.id} className="player-row">
                   <input
                     value={player.name}
+                    placeholder={`플레이어 ${index + 1}`}
                     onChange={(e) => updatePlayerName(player.id, e.target.value)}
                   />
                   <strong>{initialChipsInput || '-'}</strong>
@@ -322,88 +308,95 @@ export default function App() {
                 </div>
               ))}
             </div>
-            <button type="button" className="start-button" onClick={startGame}>게임 시작</button>
-          </div>
-        </section>
+            {state.players.length < 4 && (
+              <button
+                type="button"
+                className="ghost"
+                style={{ width: '100%', marginTop: 10 }}
+                onClick={() => setState((prev) => ({
+                  ...prev,
+                  players: [...prev.players, { id: generateId(), name: '' }],
+                }))}
+              >
+                + 플레이어 추가
+              </button>
+            )}
+          </section>
+
+          <button type="button" className="start-button" onClick={startGame}>게임 시작</button>
+        </div>
       ) : (
         <>
-          <section className="card">
-            <div className="status-strip">
-              <div>
-                <p className="caption">플레이어</p>
-                <strong>{state.players.length}명</strong>
-              </div>
-              <div>
-                <p className="caption">시작 칩</p>
-                <strong>{state.initialChips}</strong>
-              </div>
-              <div>
-                <p className="caption">전체 칩</p>
-                <strong>{totalChips}</strong>
-              </div>
+          <header className="header card">
+            <div>
+              <p className="eyebrow">고스톱 칩 트래커</p>
+              <h1>칩 현황</h1>
             </div>
-          </section>
-
-          <section className="card">
-            <h2>칩 주고받기</h2>
-            <form className="transfer-form" onSubmit={addTransfer}>
-              <label className="field">
-                <span>보내는 사람</span>
-                <select
-                  value={transferForm.from}
-                  onChange={(e) => setTransferForm((prev) => ({ ...prev, from: e.target.value }))}
-                >
-                  {state.players.map((player) => (
-                    <option key={player.id} value={player.id}>{player.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>받는 사람</span>
-                <select
-                  value={transferForm.to}
-                  onChange={(e) => setTransferForm((prev) => ({ ...prev, to: e.target.value }))}
-                >
-                  {state.players.map((player) => (
-                    <option key={player.id} value={player.id}>{player.name}</option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="field">
-                <span>칩 수</span>
-                <input
-                  type="number"
-                  min="1"
-                  max={balances[transferForm.from] ?? undefined}
-                  value={transferForm.amount}
-                  onChange={(e) => setTransferForm((prev) => ({ ...prev, amount: e.target.value }))}
-                  placeholder="예: 3"
-                />
-              </label>
-
-              <button type="submit">기록</button>
-            </form>
-            <p className="caption">보내는 사람은 현재 보유 칩 이하로만 입력할 수 있습니다.</p>
-          </section>
-
-          <section className="grid-two">
-            <div className="card">
-              <h2>현재 칩 현황</h2>
-              <div className="ranking-list">
-                {ranking.map((player, index) => (
-                  <div key={player.id} className="ranking-row">
-                    <span>{index + 1}</span>
-                    <span>{player.name}</span>
-                    <strong>{balances[player.id]}</strong>
-                  </div>
-                ))}
-              </div>
+            <div className="header-actions">
+              <button className="ghost" onClick={returnToSetup}>설정으로</button>
+              <button className="ghost" onClick={resetGame}>초기화</button>
             </div>
+          </header>
 
-            <div className="card">
-              <h2>최근 이동 내역</h2>
+          <div className="game-layout">
+            <main className="game-main">
+              <p className="transfer-guide caption">
+                {!selection.from
+                  ? '보내는 사람을 선택하세요'
+                  : !selection.to
+                    ? '받는 사람을 선택하세요'
+                    : '칩 수를 입력하세요'}
+              </p>
+
+              <section className={`table-view table-view-${state.players.length}`}>
+                <div className="table-center">
+                  {selection.from && selection.to && (
+                    <div className="transfer-input-row">
+                      <input
+                        type="number"
+                        min="1"
+                        value={amountInput}
+                        onChange={(e) => setAmountInput(e.target.value)}
+                        placeholder="칩 수"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && submitTransfer()}
+                      />
+                      <button onClick={submitTransfer}>기록</button>
+                      <button className="ghost" onClick={() => { setSelection({ from: null, to: null }); setAmountInput(''); }}>취소</button>
+                    </div>
+                  )}
+                </div>
+                {state.players.map((player, index) => {
+                  const isFrom = selection.from === player.id;
+                  const isTo = selection.to === player.id;
+                  let cardClass = 'scoreboard-card card';
+                  if (isFrom) cardClass += ' selected-from';
+                  if (isTo) cardClass += ' selected-to';
+
+                  return (
+                    <div
+                      key={player.id}
+                      className={`${cardClass} seat-${index}`}
+                      onClick={() => handleCardTap(player.id)}
+                    >
+                      <span className="scoreboard-rank">{ranks[player.id]}</span>
+                      <span className="scoreboard-name">{player.name}</span>
+                      <strong className="scoreboard-chips">{balances[player.id]}</strong>
+                      <span className="scoreboard-diff">
+                        {balances[player.id] - state.initialChips >= 0 ? '+' : ''}
+                        {balances[player.id] - state.initialChips}
+                      </span>
+                      {isFrom && <span className="scoreboard-badge from-badge">보내기</span>}
+                      {isTo && <span className="scoreboard-badge to-badge">받기</span>}
+                    </div>
+                  );
+                })}
+              </section>
+
+            </main>
+
+            <aside className="game-sidebar card">
+              <h2>이동 내역</h2>
               <div className="history-list">
                 {state.transfers.length === 0 && <p className="caption">아직 기록이 없습니다.</p>}
                 {state.transfers.map((transfer) => {
@@ -412,10 +405,10 @@ export default function App() {
 
                   return (
                     <div key={transfer.id} className="history-row">
-                      <div>
+                      <span className="history-row-main">
                         <strong>{transfer.amount}</strong>
-                        <span>{from} → {to}</span>
-                      </div>
+                        {from} → {to}
+                      </span>
                       <div className="history-actions">
                         <small>{formatTime(transfer.createdAt)}</small>
                         <button className="ghost small" onClick={() => deleteTransfer(transfer.id)}>삭제</button>
@@ -424,8 +417,8 @@ export default function App() {
                   );
                 })}
               </div>
-            </div>
-          </section>
+            </aside>
+          </div>
         </>
       )}
     </div>
