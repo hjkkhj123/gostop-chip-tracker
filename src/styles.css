@@ -15,12 +15,7 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  overflow: hidden;
   background: #f4f5f7;
-  position: fixed;
-  width: 100%;
-  touch-action: none;
-  overscroll-behavior: none;
 }
 
 button,
